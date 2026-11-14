@@ -12,7 +12,8 @@ import { ConfirmDialog, Grid, useCallPatient } from '../components/agent';
 import { AgentMark } from './auth';
 import { useNav } from '../navigation/navigation';
 import { useFocusFetch } from '../hooks/useFocusFetch';
-import { Bookings } from '../api/endpoints';
+import { Bookings, LIVE, Profile } from '../api/endpoints';
+import { CodeSheet } from '../components/agent/CodeSheet';
 import { badgeText, useSession } from '../store/session';
 import { showToast } from '../store/toast';
 import type { Booking } from '../domain/types';
@@ -27,6 +28,20 @@ export function HomeScreen() {
   const { calling, call } = useCallPatient();
   const [rejecting, setRejecting] = useState<Booking | null>(null);
   const [busyReject, setBusyReject] = useState(false);
+  const [coding, setCoding] = useState<Booking | null>(null);
+  const { data: me } = useFocusFetch(() => Profile.get());
+  const firstName = (LIVE ? (me?.name ?? '') : profile.name).split(' ')[0];
+
+  const startCollection = async (code: string) => {
+    if (!coding) return null;
+    const res = await Bookings.setStatus(coding.id, 'ONGOING', code);
+    if (res.code !== 0) return res.message || 'Couldn’t start collection';
+    const bookingId = coding.booking_id;
+    setCoding(null);
+    nav.navigate('test-details', { params: { bookingId } });
+    reload();
+    return null;
+  };
 
   const counts = {
     ACCEPTED: bookings.filter((b) => normaliseStatus(b.booking_status) === 'ACCEPTED').length,
@@ -43,6 +58,8 @@ export function HomeScreen() {
         else showToast(res.message || 'Couldn’t start the trip', 'critical');
         await reload();
       } else if (status === 'ONMYWAY') {
+        // Live: the code comes from the customer at the door, not from the server.
+        if (LIVE) return setCoding(b);
         const res = await Bookings.setStatus(b.id, 'ONGOING', b.agent_otp);
         if (res.code === 0) nav.navigate('test-details', { params: { bookingId: b.booking_id } });
         else showToast(res.message || 'Couldn’t start collection', 'critical');
@@ -100,7 +117,7 @@ export function HomeScreen() {
             </Btn>
           </Div>
         </Div>
-        <P className="mt-5 text-body text-ink-500">{greeting}, {profile.name.split(' ')[0]}</P>
+        <P className="mt-5 text-body text-ink-500">{greeting}{firstName ? `, ${firstName}` : ''}</P>
         <P className="mt-0.5 font-display text-[26px] font-extrabold tracking-[-0.5px] text-ink-900">Today’s collections</P>
         <Div className="mt-4 flex-row gap-2.5">
           <Stat label="Accepted" value={counts.ACCEPTED} dot="#EA580C" />
@@ -166,6 +183,7 @@ export function HomeScreen() {
         onConfirm={reject}
         onCancel={() => setRejecting(null)}
       />
+      <CodeSheet visible={Boolean(coding)} onSubmit={startCollection} onClose={() => setCoding(null)} />
     </Screen>
   );
 }

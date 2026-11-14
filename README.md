@@ -2,7 +2,9 @@
 
 The field-agent (phlebotomist) app for KDC+ home sample collection. It is a bare React Native CLI app for Android and iOS, with no Expo. It uses the same KDC+ design system as the patient and doctor apps.
 
-It follows the agent flow spec: assignment, trip, collection, barcode scanning of each tube, payment and completion. The wallet from the spec has been removed at the client’s request. There is no backend yet. An in-app mock server implements every endpoint in the spec, so the app works end to end on demo data.
+It follows the agent flow spec: assignment, trip, collection, barcode scanning of each tube, payment and completion. The wallet from the spec has been removed at the client’s request.
+
+It runs on the KDC+ backend (`../kdc-backend`). A demo build can instead use the in-app mock server, which implements every endpoint in the spec with fictional bookings.
 
 ## Run
 
@@ -12,9 +14,12 @@ npm start                      # Metro
 npm run android                # or: npm run ios  (run `cd ios && pod install` first)
 ```
 
-**Demo login:** mobile `98765 43210`, OTP `1234`. Any other number gets "Please contact admin for registration."
+### Live or demo
 
-Profile → **Reset demo data** restores the sample bookings after a demo run.
+`src/api/config.ts` decides, per build:
+
+- **Live** (`useMock: false`, the default): set `baseUrl` to the backend's API root, e.g. `https://api.kdcplus.in/api/v1`. Operations register each agent in the admin panel (Field agents), and the agent signs in with an SMS code.
+- **Demo** (`useMock: true`): mobile `98765 43210`, OTP `1234`. Profile → **Reset demo data** restores the sample bookings. Never use the demo with real patients.
 
 ## Screens
 
@@ -42,20 +47,32 @@ App-wide: an offline overlay (NetInfo), toasts, a confirm dialog, the slide butt
 
 | Path | What |
 | --- | --- |
-| `src/api/client.ts` | API client: `{ code, message, data }` envelope, Bearer token, a single forced logout on 401. `API_CONFIG.useMock` switches to the real backend. |
-| `src/api/endpoints.ts` | One function per endpoint in spec section 11 |
+| `src/api/config.ts` | Live or demo, and the backend address |
+| `src/api/client.ts` | The app's `{ code, message, data }` envelope (code 0 = success). Live: calls the backend, translates its envelope, refreshes expired access tokens once (one refresh at a time), signs out once when the session has ended, and never on an outage. |
+| `src/api/live.ts` | The spec's functions on the backend: its bookings mapped to the app's shape, codes ↔ numeric ids, tube colours ↔ tube types |
+| `src/api/endpoints.ts` | One function per endpoint in spec section 11, live or demo |
+| `src/store/secure.ts` | The refresh token in the iOS Keychain / Android Keystore (`react-native-keychain`). The access token is in memory only. |
 | `src/api/mockServer.ts` | The demo backend: status order, agent OTP on ONGOING, cash-due gate, paging |
 | `src/domain/rules.ts` | Business rules: status normalising, time resolution, the cash-due gate, the Proceed decision, tube colours and slots, the UPI intent, list paging |
 | `src/notifications/push.ts` | Push pipeline: badge, heads-up banner, tap routing, cold-start queue |
 | `src/components/agent/` | Booking card, slide button, scanner, UPI sheet, dialogs, offline overlay |
 | `src/screens/` | The screens |
 
-## Going live
+## Live mode
 
-1. Set `API_CONFIG.useMock = false` and `baseUrl` in `src/api/client.ts`. Screens don't change.
-2. Push: add `@react-native-firebase/messaging` and `notifee` with the KDC+ Firebase files. Send the FCM token to `registerDevice()`, and forward incoming and opened messages to `receivePush()` and `openFromPush()`.
-3. Move the token from MMKV to the Keychain / Keystore.
-4. Remove the demo hint on Login and the Reset demo data row on Profile.
+How the live app differs from the spec's backend, by design:
+
+- **Collection code:** the agent never receives it. At the door, *Slide to collect samples* asks for the 4-digit code the customer reads from their KDC+ app. The server checks it, and five wrong codes lock the booking until operations reset it.
+- **UPI:** each booking gets a single-use QR from the payment provider. The sheet waits for the bank's confirmation; there's no "Payment received" button, and an expired QR can be replaced.
+- **Calls:** there's no bridged calling. *Call* dials the collection address's phone, which the backend shares only while the visit is under way. Each attempt is logged.
+- **Session:**
+  - The refresh token lives in the Keychain / Keystore, readable only after the device's first unlock and never backed up. The access token is never written to disk.
+  - Launching the app restores the session; *Logout* ends it on the server.
+  - When the backend can't be reached, the agent stays signed in.
+- **Delete Account** files a request with support, who handle it: agents' accounts belong to operations.
+- **Hidden in live builds:** the demo login hint and *Reset demo data*.
+
+**Still to do before push works:** add `@react-native-firebase/messaging` and `notifee` with the KDC+ Firebase files. Send the FCM token to `registerDevice()`, and forward incoming and opened messages to `receivePush()` and `openFromPush()`. Until then, live builds register the device without a push token, and notifications appear in the app's list.
 
 ## Improvements over the source app (spec 14.6)
 
@@ -67,4 +84,14 @@ App-wide: an offline overlay (NetInfo), toasts, a confirm dialog, the slide butt
 
 ## Tests
 
-`npm test`: business rules, the full booking flow against the mock backend (online, cash, added-patient due, reject, paging), and a render of every screen.
+`npm test` covers:
+- Business rules.
+- The full booking flow against the mock backend: online, cash, added-patient due, reject and paging.
+- A render of every screen.
+- The live layer against a fake server (mapping, the envelope, refresh, sign-out).
+
+Against a running backend:
+- `__tests__/live.contract.test.ts` runs a whole visit through the app's own code: sign-in, the code at the door, an added person, samples, cash due, UPI by QR, notifications, help, pages, refresh and sign-out.
+- `__tests__/live.load.test.ts` runs many agents at once.
+
+Both are skipped unless `AGENT_LIVE_URL` and `AGENT_DATA` are set; see each file's header.

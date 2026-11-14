@@ -39,3 +39,22 @@ jest.mock('react-native-svg', () => {
   const { View } = require('react-native');
   return new Proxy({ __esModule: true, default: View }, { get: (t, name) => (name in t ? t[name] : View) });
 });
+
+// The Keychain, in memory (react-native-keychain has no native module under Jest).
+jest.mock('react-native-keychain', () => {
+  const store = new Map();
+  return {
+    ACCESSIBLE: { AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 'AfterFirstUnlockThisDeviceOnly' },
+    setGenericPassword: async (username, password, opts) => {
+      store.set(opts?.service ?? 'default', { username, password });
+      return true;
+    },
+    getGenericPassword: async (opts) => store.get(opts?.service ?? 'default') ?? false,
+    resetGenericPassword: async (opts) => store.delete(opts?.service ?? 'default'),
+  };
+});
+
+// Demo by default; with AGENT_LIVE_URL the app's live layer talks to that backend (contract tests).
+jest.mock('./src/api/config', () => ({
+  API_CONFIG: process.env.AGENT_LIVE_URL ? { useMock: false, baseUrl: process.env.AGENT_LIVE_URL, timeoutMs: 20000 } : { useMock: true, baseUrl: 'https://api.kdcplus.in/api/v1', timeoutMs: 20000 },
+}));

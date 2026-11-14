@@ -9,8 +9,8 @@ import { OtpInput } from '../components/ui/Inputs';
 import { EcgLine, Logo } from '../components/ui/Logo';
 import { isDevLaunch, useNav, useParams } from '../navigation/navigation';
 import { useSession } from '../store/session';
-import { Auth } from '../api/endpoints';
-import { rearmLogout } from '../api/client';
+import { Auth, LIVE } from '../api/endpoints';
+import { rearmLogout, restoreSession } from '../api/client';
 import { registerDevice, requestPermission } from '../notifications/push';
 import { showToast } from '../store/toast';
 import { AGENT_MOBILE, DEMO_OTP, WEBSITE } from '../mock-data/seed';
@@ -34,13 +34,16 @@ export function SplashScreen() {
   useEffect(() => {
     useSession.getState().ensureInstallId();
     if (isDevLaunch()) return;
-    const token = useSession.getState().token;
-    if (token) {
-      const t = setTimeout(() => nav.resetTo('home'), 900);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => nav.resetTo('login'), 2000);
-    return () => clearTimeout(t);
+    let alive = true;
+    const started = Date.now();
+    // Live: the access token is in memory only; the Keychain's refresh token restores it.
+    restoreSession().then((state) => {
+      const wait = Math.max(0, (state === 'signed-out' ? 2000 : 900) - (Date.now() - started));
+      setTimeout(() => alive && nav.resetTo(state === 'signed-out' ? 'login' : 'home'), wait);
+    });
+    return () => {
+      alive = false;
+    };
   }, [nav]);
   return (
     <Screen background="bg-white" padTop={false} padBottom={false}>
@@ -138,10 +141,12 @@ export function LoginScreen() {
           </Div>
         </Div>
 
-        {/* Prototype only: the mock backend's registered agent. */}
-        <P className="mt-4 text-center text-caption text-ink-400">
-          Demo account: {AGENT_MOBILE.replace(/(\d{5})(\d{5})/, '$1 $2')} · OTP {DEMO_OTP}
-        </P>
+        {/* Demo builds only: the mock backend's registered agent. */}
+        {!LIVE ? (
+          <P className="mt-4 text-center text-caption text-ink-400">
+            Demo account: {AGENT_MOBILE.replace(/(\d{5})(\d{5})/, '$1 $2')} · OTP {DEMO_OTP}
+          </P>
+        ) : null}
 
         <Div className="mt-auto pb-4 pt-8" style={{ paddingBottom: 16 + solidBarInset() }}>
           <Div className="flex-row items-center justify-center gap-5">

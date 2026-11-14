@@ -1,11 +1,13 @@
 /**
- * Local storage keys from the spec (2.2): the session token, a per-install id
- * and the unread notification count. Backed by MMKV; move the token to the
- * Keychain / Keystore before release.
+ * Session state (spec 2.2): the token, a per-install id and the unread count.
+ * Live: the access token is kept in memory only and the refresh token is in the
+ * Keychain / Keystore (store/secure.ts); MMKV keeps just the install id and the
+ * unread count. Demo: the demo token is kept in MMKV as before.
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { persistStorage } from './storage';
+import { API_CONFIG } from '../api/config';
 
 function uuid4() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -30,7 +32,7 @@ export const useSession = create<SessionState>()(
     (set, get) => ({
       token: null,
       installId: null,
-      unread: 3,
+      unread: API_CONFIG.useMock ? 3 : 0,
       setToken: (token) => set({ token }),
       clearToken: () => set({ token: null }),
       ensureInstallId: () => {
@@ -43,7 +45,12 @@ export const useSession = create<SessionState>()(
       bumpUnread: () => set((s) => ({ unread: s.unread + 1 })),
       resetUnread: () => set({ unread: 0 }),
     }),
-    { name: 'agent-session', storage: persistStorage },
+    {
+      name: 'agent-session',
+      storage: persistStorage,
+      // Live: never write the access token to disk.
+      partialize: (s) => (API_CONFIG.useMock ? s : { installId: s.installId, unread: s.unread }),
+    },
   ),
 );
 

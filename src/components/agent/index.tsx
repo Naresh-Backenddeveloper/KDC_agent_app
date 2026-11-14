@@ -11,7 +11,7 @@ import { Button } from '../ui/Button';
 import { FrameBox } from '../ui/DeviceFrame';
 import { DEVICE } from '../ui/Screen';
 import { showToast } from '../../store/toast';
-import { Bookings } from '../../api/endpoints';
+import { Bookings, LIVE } from '../../api/endpoints';
 import type { Booking } from '../../domain/types';
 import { addressLine, rupee, statusMeta, tubeColour, type StatusTone } from '../../domain/rules';
 import { openFromPush, useHeadsUp } from '../../notifications/push';
@@ -122,7 +122,8 @@ export async function openDirections(b: Booking) {
 let callInFlight = false;
 
 /**
- * Server-bridged call with audit logging: INITIATED, then SUCCESS or FAILED.
+ * Call the patient with audit logging: INITIATED, then SUCCESS or FAILED. Demo: the
+ * spec's server-bridged call. Live: the phone dials the booking's contact number.
  * Logging never blocks the agent; only one call at a time.
  */
 export function useCallPatient() {
@@ -134,6 +135,14 @@ export function useCallPatient() {
     Bookings.callLog(b.id, 'INITIATED').catch(() => undefined);
     try {
       const res = await Bookings.callPatient(b.id);
+      if (res.code === 0 && LIVE) {
+        // Live: no bridged calling; the phone dials the collection contact.
+        const phone = (res.data as { phone?: string } | undefined)?.phone;
+        const opened = phone ? await Linking.openURL(`tel:${phone}`).then(() => true, () => false) : false;
+        Bookings.callLog(b.id, opened ? 'SUCCESS' : 'FAILED', opened ? undefined : 'Couldn’t open the dialer').catch(() => undefined);
+        if (!opened) showToast('Couldn’t open the dialer', 'critical');
+        return opened;
+      }
       if (res.code === 0) {
         Bookings.callLog(b.id, 'SUCCESS').catch(() => undefined);
         showToast('Call initiated. Your phone will ring shortly.', 'success');

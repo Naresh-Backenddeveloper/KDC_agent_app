@@ -12,7 +12,7 @@ import { PermissionsAndroid, Platform } from 'react-native';
 import { create } from 'zustand';
 import type { AgentNotification } from '../domain/types';
 import { onMockPush } from '../api/mockServer';
-import { Bookings, Profile } from '../api/endpoints';
+import { Bookings, LIVE, Profile } from '../api/endpoints';
 import { useSession } from '../store/session';
 import { navigationRef, resetRoot } from '../navigation/navigation';
 
@@ -36,7 +36,8 @@ export async function requestPermission() {
 export async function registerDevice() {
   const { token, ensureInstallId } = useSession.getState();
   if (!token) return;
-  await Profile.registerDevice(`mock-fcm-${ensureInstallId().slice(0, 8)}`, ensureInstallId());
+  // Live builds have no Firebase project files yet: the device is recorded without a push token.
+  await Profile.registerDevice(LIVE ? '' : `mock-fcm-${ensureInstallId().slice(0, 8)}`, ensureInstallId());
 }
 
 export function receivePush(n: AgentNotification) {

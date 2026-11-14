@@ -16,8 +16,9 @@ import { BookingCard } from '../components/agent/BookingCard';
 import { ConfirmDialog, Grid, useColumns } from '../components/agent';
 import { useNav, useParams } from '../navigation/navigation';
 import { useFocusFetch } from '../hooks/useFocusFetch';
-import { Cms, Help, Notifications, Profile, Bookings } from '../api/endpoints';
+import { Cms, Help, Notifications, Profile, Bookings, LIVE } from '../api/endpoints';
 import { resetMockDb } from '../api/mockServer';
+import { endSession } from '../api/client';
 import { useSession } from '../store/session';
 import { showToast } from '../store/toast';
 import { openFromPush } from '../notifications/push';
@@ -34,7 +35,7 @@ export function ProfileScreen() {
   const [busy, setBusy] = useState(false);
 
   const signOut = () => {
-    useSession.getState().clearToken();
+    endSession();
     nav.resetTo('login');
   };
 
@@ -109,9 +110,11 @@ export function ProfileScreen() {
           <ListRow icon={<LogOut className="h-[18px] w-[18px]" strokeWidth={2.1} />} title="Logout" danger onClick={() => setConfirm('logout')} last />
         </Group>
 
-        <Group>
-          <ListRow icon={<RefreshCw className="h-[18px] w-[18px]" strokeWidth={2.1} />} title="Reset demo data" subtitle="Prototype only: restores the sample bookings" onClick={() => setConfirm('reset')} last />
-        </Group>
+        {!LIVE ? (
+          <Group>
+            <ListRow icon={<RefreshCw className="h-[18px] w-[18px]" strokeWidth={2.1} />} title="Reset demo data" subtitle="Prototype only: restores the sample bookings" onClick={() => setConfirm('reset')} last />
+          </Group>
+        ) : null}
 
         <P className="text-center text-caption text-ink-400">KDC+ Agent · version 1.0 (1)</P>
       </Div>

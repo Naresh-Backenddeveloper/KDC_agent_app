@@ -163,6 +163,8 @@ export function CollectPaymentScreen() {
         amount={amount}
         note={`KDC+ ${booking.booking_id}`}
         busy={busy}
+        bookingId={booking.booking_id}
+        forCashDue={dueMode}
         onClose={() => setUpi(false)}
         onReceived={() => confirm('UPI / QR')}
       />
